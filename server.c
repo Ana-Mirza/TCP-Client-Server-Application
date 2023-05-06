@@ -106,6 +106,10 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 	/* update client status */
 	clients[client_index].is_connected = 1;
 	clients[client_index].fd = clientfd;
+
+	/* send waiting messages */
+	/* TO DO */
+
 	return 0;
 }
 
@@ -226,14 +230,43 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 				} else if (poll_fds[i].fd == udpfd) {
 					/* -------------------- received data from udp client -------------------- */
-					int rc = recv_all(poll_fds[i].fd, &received_packet,
-									sizeof(received_packet));
-					DIE(rc < 0, "recv");
+					struct msg_packet *msg = malloc(sizeof(struct msg_packet));
+					struct sockaddr_in cli_addr;
+					int rc = recvfrom(poll_fds[i].fd, msg->message, sizeof(msg->message), 0,
+										(struct sockaddr *)(&msg->addr), &cli_addr);
+					DIE(rc < 0, "recvfrom");
+
+					printf("received data from udp: %s\n", msg->message);
+
+					/* get topic */
+					char topic[MAX_NAME];
+					memcpy(topic, received_packet.message, 50);
 
 					/* send message to all clients that are subscribed to topic */
+					for (int j = 0; j < num_clients; j++) {
+						if (poll_fds[j].fd != STDIN_FILENO && poll_fds[j].fd != udpfd
+							&& poll_fds[j].fd != listenfd) {
 
+							/* check if client is subscribed to topic */
+							int index = get_clientfd_index(poll_fds[j].fd);
+							int topic_index = get_topic_index(topic, index);
+							if (topic_index == -1)
+								continue;
+							
+							/* sent to online client */
+							if (clients[index].is_connected) {
+								int rc = send_all(poll_fds[j].fd, &received_packet,
+													sizeof(received_packet));
+								DIE(rc < 0, "send");
+							} else {
+								/* put in queue of client */
+								if (clients[index].topics_subscribed[topic_index].sf == 0)
+									continue;
 
-					/* put in queue of messages of all clients unconnected */
+								/* TO DO */
+							}
+						}
+					}
 
 				} else {
 					/* -------------------- received data from tcp client -------------------- */

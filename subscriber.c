@@ -26,6 +26,42 @@ char buf[MSG_MAXSIZE + 1];
 struct chat_packet sent_packet;
 struct chat_packet recv_packet;
 
+void print_message() {
+	/* parse input */
+	char topic[MAX_NAME];
+	int data_type;
+	char payload[MAX_PAYLOAD];
+
+	memcpy(topic, recv_packet.message, 50);
+	memcpy(data_type, recv_packet.message + 50, 1);
+	memcpy(payload, recv_packet.message + 51, MAX_PAYLOAD);
+	
+	/* print message from server */
+	// printf("%s:%d - %s - ", );
+
+	switch (data_type)
+	{
+		case 0:
+		{
+			break;
+		}
+		case 1:
+		{
+			break;
+		}
+		case 2:
+		{
+			break;
+		}
+		case 3:
+		{
+			break;
+		}
+		default:
+			break;
+	}
+}
+
 void run_client(int sockfd) {
 	memset(buf, 0, MSG_MAXSIZE + 1);
 
@@ -120,6 +156,9 @@ void run_client(int sockfd) {
 			/* close client session */
 			if (strcmp(recv_packet.message, "exit") == 0)
 				return;
+
+			/* print message received from server */
+			print_message();
 		}
 	}
 }

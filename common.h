@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 int send_all(int sockfd, void *buff, size_t len);
 int recv_all(int sockfd, void *buff, size_t len);
@@ -10,6 +12,8 @@ int recv_all(int sockfd, void *buff, size_t len);
 /* MAximum length of message */
 #define MSG_MAXSIZE 1024
 #define MAX_NAME 100
+#define MAX_PAYLOAD 1500
+#define MAX_UDP_MSG 1551
 
 /* strcture for a message received/sent */
 struct chat_packet {
@@ -19,8 +23,8 @@ struct chat_packet {
 
 struct msg_packet {
   uint16_t duplicates;
-  uint16_t len;
-  char message[MSG_MAXSIZE + 1];
+  struct sockaddr_in addr;
+  char message[MAX_UDP_MSG];
 };
 
 /* structure of a topic */
