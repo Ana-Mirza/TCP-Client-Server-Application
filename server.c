@@ -143,11 +143,12 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					printf("Socket fd client %d\n", newsockfd);
 
 					/* get client id */
-					char client_id[ID_SIZE];
-					recv(newsockfd, client_id, sizeof(client_id), 0);
+					int rc = recv_all(poll_fds[i].fd, &received_packet,
+									sizeof(received_packet));
+					DIE(rc < 0, "recv");
 
 					/* update client status */
-					update_clients(newsockfd, client_id);
+					update_clients(newsockfd, received_packet.message);
 					continue;
 				} else if (poll_fds[i].fd == STDIN_FILENO) {
 					/* -------------------- received input from stdin -------------------- */
@@ -169,6 +170,13 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					}
 					continue;
 
+				} else if (poll_fds[i].fd == udpfd) {
+					/* -------------------- received data from udp client -------------------- */
+					int rc = recv_all(poll_fds[i].fd, &received_packet,
+									sizeof(received_packet));
+					DIE(rc < 0, "recv");
+
+					/* treat topic messages */
 				} else {
 					/* -------------------- received data from tcp client -------------------- */
 					int rc = recv_all(poll_fds[i].fd, &received_packet,
@@ -192,6 +200,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						}
 
 						num_clients--;
+						continue;
 					} else {
 						/* ----------- received tcp message ----------- */
 						printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
