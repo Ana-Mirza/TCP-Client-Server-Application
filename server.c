@@ -218,7 +218,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 					if (rc == 0) {
 						/* ----------- tcp conection closed ----------- */
-						printf("Socket-ul client %d a inchis conexiunea\n", i);
 
 						/* update client status */
 						int index = get_clientfd_index(poll_fds[i].fd);
@@ -233,6 +232,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						}
 
 						num_clients--;
+						printf("Client %s disconnected.\n", clients[index].id);
 						continue;
 					} else {
 						/* ----------- received tcp message ----------- */
