@@ -42,6 +42,15 @@ void run_client(int sockfd) {
 		if (superBET[0].revents & POLLIN) {
 			fgets(buf, sizeof(buf), stdin);
 
+			/* close client session */
+			if (strcmp(buf, "exit\n") == 0) {
+				memset(buf, 0, MSG_MAXSIZE + 1);
+				sent_packet.len = strlen(buf) + 1;
+				strcpy(sent_packet.message, buf);
+				send_all(sockfd, &sent_packet, sizeof(sent_packet));
+				return;
+			}
+
 			sent_packet.len = strlen(buf) + 1;
 			strcpy(sent_packet.message, buf);
 
@@ -59,7 +68,7 @@ void run_client(int sockfd) {
 
 			printf("%s\n", recv_packet.message);
 
-			/* close clinet session */
+			/* close client session */
 			if (strcmp(recv_packet.message, "exit") == 0)
 				return;
 		}
