@@ -65,8 +65,8 @@ void run_client(int sockfd) {
 int main(int argc, char *argv[]) {
 	int sockfd = -1;
 
-	if (argc != 3) {
-		printf("\n Usage: %s <ip> <port>\n", argv[0]);
+	if (argc != 4) {
+		printf("\n Usage: %s <id> <ip> <port>\n", argv[0]);
 		return 1;
 	}
 
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
 
 	/* Parse port as number */
 	uint16_t port;
-	int rc = sscanf(argv[2], "%hu", &port);
+	int rc = sscanf(argv[3], "%hu", &port);
 	DIE(rc != 1, "Given port is invalid");
 
 	/* Obtain TCP socket to connect to server */
@@ -89,13 +89,20 @@ int main(int argc, char *argv[]) {
 	memset(&serv_addr, 0, socket_len);
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_port = htons(port);
-	rc = inet_pton(AF_INET, argv[1], &serv_addr.sin_addr.s_addr);
+	rc = inet_pton(AF_INET, argv[2], &serv_addr.sin_addr.s_addr);
 	DIE(rc <= 0, "inet_pton");
 
 	/* Connect to server */
 	rc = connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 	DIE(rc < 0, "connect");
 
+	/* Send client id to server */
+	struct chat_packet sent_packet;
+	sent_packet.len = strlen(argv[1]) + 1;
+	strcpy(sent_packet.message, argv[1]);
+	send_all(sockfd, &sent_packet, sizeof(sent_packet));
+
+	/* Run client */
 	run_client(sockfd);
 
 	/* Close connection and socket */

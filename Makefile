@@ -5,31 +5,31 @@
 
 CFLAGS = -Wall -g -Werror -Wno-error=unused-variable
 
-# Portul pe care asculta serverul
-PORT = 12345
+# Server port
+PORT = 8080
 
-# Adresa IP a serverului
+# Server IP addres
 IP_SERVER = 127.0.0.1
 
-all: server client
+all: server subscriber
 
 common.o: common.c
 
-# Compileaza server.c
+# Compile server.c
 server: server.c common.o
 
-# Compileaza client.c
-client: client.c common.o
+# Compile subscriber.c
+subscriber: subscriber.c common.o
 
-.PHONY: clean run_server run_client
+.PHONY: clean run_server run_subscriber
 
 # Ruleaza serverul
 run_server:
 	./server ${IP_SERVER} ${PORT}
 
 # Ruleaza clientul 	
-run_client:
-	./client ${IP_SERVER} ${PORT}
+run_subscriber:
+	./subscriber ${IP_SERVER} ${PORT}
 
 clean:
-	rm -rf server client *.o *.dSYM
+	rm -rf server subscriber *.o *.dSYM
