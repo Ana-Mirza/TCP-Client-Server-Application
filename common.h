@@ -31,6 +31,10 @@ struct struct_client {
   int isConnected;
   struct topic *topics_subscribed[MAX_NAME];
   struct chat_packet *messages_received;
+  int topics_size;
+  int topics_len;
+  int msg_recv_size;
+  int msg_recv_len;
 };
 
 #endif
