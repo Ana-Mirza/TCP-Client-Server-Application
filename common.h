@@ -23,13 +23,12 @@ struct topic {
   int sf;
 };
 
-
 /* structure for a client */
-struct struct_client {
+struct client {
   int fd;
   char id[MAX_NAME];
-  int isConnected;
-  struct topic *topics_subscribed[MAX_NAME];
+  int is_connected;
+  struct topic *topics_subscribed;
   struct chat_packet *messages_received;
   int topics_size;
   int topics_len;
