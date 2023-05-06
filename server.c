@@ -57,7 +57,7 @@ int get_client_index(char client_id[ID_SIZE]) {
 	return -1;
 }
 
-void update_clients(int clientfd, char client_id[ID_SIZE]) {
+int update_clients(int clientfd, char client_id[ID_SIZE]) {
 	/* get position of client in array */
 	int client_index = get_client_index(client_id);
 
@@ -82,11 +82,19 @@ void update_clients(int clientfd, char client_id[ID_SIZE]) {
 		clients[clients_len].msg_recv_size = INITIAL_SIZE;
 		clients[clients_len].msg_recv_len = 0;
 		clients_len++;
-		return;
+		return 0;
+	}
+
+	/* check if client is already in use */
+	if (clients[client_index].is_connected) {
+		close(clientfd);
+		printf("Client %s already connected.", client_id);
+		return -1;
 	}
 
 	/* update client status */
 	clients[client_index].is_connected = 1;
+	return 0;
 }
 
 void run_chat_multi_server(int listenfd, int udpfd) {
@@ -132,11 +140,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						continue;
 					}
 
-					/* add new socket to file descriptors */
-					poll_fds[num_clients].fd = newsockfd;
-					poll_fds[num_clients].events = POLLIN;
-					num_clients++;
-
 					printf("New client <ID_CLIENT> connected from %s:%d.\n", 
 					inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 					/* TEMPORARY */
@@ -148,7 +151,14 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					DIE(rc < 0, "recv");
 
 					/* update client status */
-					update_clients(newsockfd, received_packet.message);
+					rc = update_clients(newsockfd, received_packet.message);
+
+					/* add new socket to file descriptors if client is valid */
+					if (rc != -1) {
+						poll_fds[num_clients].fd = newsockfd;
+						poll_fds[num_clients].events = POLLIN;
+						num_clients++;
+					}
 					continue;
 				} else if (poll_fds[i].fd == STDIN_FILENO) {
 					/* -------------------- received input from stdin -------------------- */
