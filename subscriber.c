@@ -104,6 +104,12 @@ void run_client(int sockfd) {
 
 			/* Use send_all function to send the pachet to the server */
 			send_all(sockfd, &sent_packet, sizeof(sent_packet));
+
+			/* print status */
+			if (strcmp(command, "subscribe") == 0)
+				printf("Subscribed to topic.\n");
+			else if (strcmp(command, "unsubscribe") == 0)
+				printf("Unsubscribed from topic.\n");
 		}
 
 		if (superBET[1].revents & POLLIN) {
