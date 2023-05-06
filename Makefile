@@ -8,8 +8,11 @@ CFLAGS = -Wall -g -Werror -Wno-error=unused-variable
 # Server port
 PORT = 8080
 
-# Server IP addres
+# Server IP address
 IP_SERVER = 127.0.0.1
+
+# Client ID
+ID_CLIENT = C0
 
 all: server subscriber
 
@@ -23,13 +26,13 @@ subscriber: subscriber.c common.o
 
 .PHONY: clean run_server run_subscriber
 
-# Ruleaza serverul
+# Run server
 run_server:
-	./server ${IP_SERVER} ${PORT}
+	./server ${PORT}
 
-# Ruleaza clientul 	
+# Run subscriber
 run_subscriber:
-	./subscriber ${IP_SERVER} ${PORT}
+	./subscriber ${ID_CLIENT} ${IP_SERVER} ${PORT}
 
 clean:
 	rm -rf server subscriber *.o *.dSYM

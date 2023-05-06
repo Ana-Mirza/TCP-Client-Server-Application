@@ -22,12 +22,12 @@
 #include "common.h"
 #include "helpers.h"
 
-void run_client(int sockfd) {
-	char buf[MSG_MAXSIZE + 1];
-	memset(buf, 0, MSG_MAXSIZE + 1);
+char buf[MSG_MAXSIZE + 1];
+struct chat_packet sent_packet;
+struct chat_packet recv_packet;
 
-	struct chat_packet sent_packet;
-	struct chat_packet recv_packet;
+void run_client(int sockfd) {
+	memset(buf, 0, MSG_MAXSIZE + 1);
 
 	/* Multiplex stdin input and getting a message from server */
 	struct pollfd superBET[2];
@@ -58,6 +58,10 @@ void run_client(int sockfd) {
 			}
 
 			printf("%s\n", recv_packet.message);
+
+			/* close clinet session */
+			if (strcmp(recv_packet.message, "exit") == 0)
+				return;
 		}
 	}
 }
@@ -97,7 +101,6 @@ int main(int argc, char *argv[]) {
 	DIE(rc < 0, "connect");
 
 	/* Send client id to server */
-	struct chat_packet sent_packet;
 	sent_packet.len = strlen(argv[1]) + 1;
 	strcpy(sent_packet.message, argv[1]);
 	send_all(sockfd, &sent_packet, sizeof(sent_packet));

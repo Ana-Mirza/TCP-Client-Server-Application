@@ -28,6 +28,11 @@ struct client *clients;
 int clients_size;
 int clients_len;
 
+/* send and receive buffers */
+char buf[MSG_MAXSIZE + 1];
+struct chat_packet received_packet;
+struct chat_packet sent_packet;
+
 /* free clients array*/
 void free_clients() {
 	/* free structures for each client */
@@ -87,8 +92,14 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 
 	/* check if client is already in use */
 	if (clients[client_index].is_connected) {
+		/* send exit message to client */
+		sent_packet.len = strlen("exit") + 1;
+		strcpy(sent_packet.message, "exit");
+		send_all(clientfd, &sent_packet, sizeof(sent_packet));
+
+		/* close connection */
 		close(clientfd);
-		printf("Client %s already connected.", client_id);
+		printf("Client %s already connected.\n", client_id);
 		return -1;
 	}
 
@@ -102,8 +113,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 	struct pollfd poll_fds[MAX_CONNECTIONS];
 	int num_clients = 3;
 	int rc;
-
-	struct chat_packet received_packet;
 
 	/* Set socket listefd for listening */
 	rc = listen(listenfd, MAX_CONNECTIONS);
@@ -119,19 +128,26 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 	/* wait for messages from clients or stdin */
 	while (1) {
+		printf("NEW ROUND OF WHILE\n");
 
-	rc = poll(poll_fds, num_clients, -1);
-	DIE(rc < 0, "poll");
+		rc = poll(poll_fds, num_clients, -1);
+		DIE(rc < 0, "poll");
 
 		for (int i = 0; i < num_clients; i++) {
 			if (poll_fds[i].revents & POLLIN) {
 				if (poll_fds[i].fd == listenfd) {
+					// printf("NEW CONNECTION\n");
 					/* -------------------- new conection request -------------------- */
 					struct sockaddr_in cli_addr;
 					socklen_t cli_len = sizeof(cli_addr);
 					int newsockfd =
 						accept(listenfd, (struct sockaddr *)&cli_addr, &cli_len);
 					DIE(newsockfd < 0, "accept");
+
+					/* get client id */
+					int rc = recv_all(newsockfd, &received_packet,
+									sizeof(received_packet));
+					DIE(rc < 0, "recv");
 
 					/* server is already full, close conection */
 					if (num_clients == MAX_CONNECTIONS) {
@@ -140,15 +156,10 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						continue;
 					}
 
-					printf("New client <ID_CLIENT> connected from %s:%d.\n", 
+					printf("New client %s connected from %s:%d.\n", received_packet.message,
 					inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 					/* TEMPORARY */
-					printf("Socket fd client %d\n", newsockfd);
-
-					/* get client id */
-					int rc = recv_all(poll_fds[i].fd, &received_packet,
-									sizeof(received_packet));
-					DIE(rc < 0, "recv");
+					printf("Socket fd client %d: %d\n", num_clients, newsockfd);
 
 					/* update client status */
 					rc = update_clients(newsockfd, received_packet.message);
@@ -157,25 +168,37 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					if (rc != -1) {
 						poll_fds[num_clients].fd = newsockfd;
 						poll_fds[num_clients].events = POLLIN;
+						poll_fds[num_clients].revents = 0;
 						num_clients++;
 					}
 					continue;
 				} else if (poll_fds[i].fd == STDIN_FILENO) {
 					/* -------------------- received input from stdin -------------------- */
-					int rc = recv_all(poll_fds[i].fd, &received_packet,
-									sizeof(received_packet));
-					DIE(rc < 0, "recv");
+					memset(buf, 0, MSG_MAXSIZE + 1);
+					fgets(buf, sizeof(buf), stdin);
+					printf("RECEIVED INPUT DATA: %s\n", buf);
 
 					/* check input message */
-					if (strcmp(received_packet.message, "exit") == 0) {
+					if (strncmp(buf, "exit\n", strlen(buf)) == 0) {
+						printf("received EXIT command\n");
 						/* close all conections and exit */
 						for (int j = 0; j < num_clients; j++) {
-							if (poll_fds[j].fd != listenfd || poll_fds[j].fd != STDIN_FILENO)
+							if (poll_fds[j].fd != listenfd && poll_fds[j].fd != STDIN_FILENO
+								&& poll_fds[j].fd != udpfd) {
+								/* send exit message to client */
+								sent_packet.len = strlen("exit") + 1;
+								strcpy(sent_packet.message, "exit");
+								send_all(poll_fds[j].fd, &sent_packet, sizeof(sent_packet));
+
+								/* close connection with client */
 								close(poll_fds[j].fd);
+							}
 						}
 
+						printf("ended\n");
 						return;
 					} else {
+						/* invalid command */
 						printf("Commands available: exit\n");
 					}
 					continue;
@@ -218,12 +241,13 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						/* send message to all other clients */
 						for (int j = 0; j < num_clients; j++) {
 							if (poll_fds[j].fd == listenfd || poll_fds[i].fd == poll_fds[j].fd
-								|| poll_fds[j].fd == STDIN_FILENO)
+								|| poll_fds[j].fd == STDIN_FILENO || poll_fds[j].fd == udpfd)
 								continue;
 
 							int rc = send_all(poll_fds[j].fd, &received_packet, sizeof(received_packet));
 							DIE(rc < 0, "recv");
 						}
+						continue;
 					}
 				}
 			}
@@ -273,6 +297,11 @@ int main(int argc, char *argv[]) {
 	int udpfd = socket(AF_INET, SOCK_DGRAM, 0);
 	rc = bind(udpfd, (const struct sockaddr *)&serv_addr, sizeof(serv_addr));
 	DIE(rc < 0, "bind udpfd");
+
+	/* initialize clients array */
+	clients = malloc(INITIAL_SIZE * sizeof(struct client));
+	clients_size = INITIAL_SIZE;
+	clients_len = 0;
 
 	/* run server */
 	run_chat_multi_server(listenfd, udpfd);
