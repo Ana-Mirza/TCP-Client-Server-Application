@@ -44,10 +44,6 @@ void run_client(int sockfd) {
 
 			/* close client session */
 			if (strcmp(buf, "exit\n") == 0) {
-				memset(buf, 0, MSG_MAXSIZE + 1);
-				sent_packet.len = strlen(buf) + 1;
-				strcpy(sent_packet.message, buf);
-				send_all(sockfd, &sent_packet, sizeof(sent_packet));
 				return;
 			}
 

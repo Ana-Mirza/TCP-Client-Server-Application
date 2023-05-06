@@ -105,6 +105,7 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 
 	/* update client status */
 	clients[client_index].is_connected = 1;
+	clients[client_index].fd = clientfd;
 	return 0;
 }
 
@@ -148,6 +149,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 	/* wait for messages from clients or stdin */
 	while (1) {
+		/* TEMPORARY */
 		printf("NEW ROUND OF WHILE\n");
 
 		rc = poll(poll_fds, num_clients, -1);
@@ -196,7 +198,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					/* -------------------- received input from stdin -------------------- */
 					memset(buf, 0, MSG_MAXSIZE + 1);
 					fgets(buf, sizeof(buf), stdin);
-					printf("RECEIVED INPUT DATA: %s\n", buf);
 
 					/* check input message */
 					if (strncmp(buf, "exit\n", strlen(buf)) == 0) {
@@ -230,6 +231,10 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					DIE(rc < 0, "recv");
 
 					/* send message to all clients that are subscribed to topic */
+
+
+					/* put in queue of messages of all clients unconnected */
+
 				} else {
 					/* -------------------- received data from tcp client -------------------- */
 					int rc = recv_all(poll_fds[i].fd, &received_packet,
@@ -242,6 +247,9 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						/* update client status */
 						int index = get_clientfd_index(poll_fds[i].fd);
 						DIE(index < 0, "wrong index");
+
+						printf("print in rc == 0\n");
+						print_topics(index);
 
 						clients[index].is_connected = 0;
 						close(poll_fds[i].fd);
@@ -256,8 +264,9 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						continue;
 					} else {
 						/* ----------- received tcp message ----------- */
-						printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
-								poll_fds[i].fd, received_packet.message);
+						/* TEMPORARY*/
+						// printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
+						// 		poll_fds[i].fd, received_packet.message);
 
 						/* parse message */
 						int nr = 0, sf = 3;
