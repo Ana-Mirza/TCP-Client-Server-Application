@@ -51,12 +51,59 @@ void run_client(int sockfd) {
 				return;
 			}
 
+			/* save input */
+			char tmp[strlen(buf) + 1];
+			memcpy(tmp, buf, strlen(buf) + 1);
+
+			/* check input */
+			int nr = 0;
+			int sf = 3, invalid_command = 0;
+			char command[20];
+			char topic[100];
+			char *token = strtok(tmp, " ");
+			while (token != NULL) {
+				nr++;
+
+				/* save command */
+				if (nr == 1) {
+					strcpy(command, token);
+
+					/* invalid command */
+					if (strcmp(command, "exit") != 0 &&
+						strcmp(command, "subscribe") != 0 &&
+						strcmp(command, "unsubscribe") != 0) {
+						invalid_command = 1;
+						break;
+					}
+				}
+
+				/* save topic */
+				if (nr == 2)
+					strcpy(topic, token);
+				
+				/* save sf */
+				if (nr == 3)
+					sf = atoi(token);
+				if (nr > 3)
+					break;
+
+				token = strtok(NULL, " ");
+			}
+
+			/* invalid command */
+			if (nr > 3 || (sf != 0 && sf != 1 && nr != 2) ||
+				(strcmp(command, "exit") == 0 && nr > 1) ||
+				(strcmp(command, "subscribe") == 0 && nr != 3) ||
+				(strcmp(command, "unsubscribe") == 0 && nr != 2) || invalid_command) {
+				printf("Commands: exit, subscribe <topic> <sf = 0/1>, unsubscribe <topic>\n");
+				continue;
+			}
+
 			sent_packet.len = strlen(buf) + 1;
 			strcpy(sent_packet.message, buf);
 
 			/* Use send_all function to send the pachet to the server */
 			send_all(sockfd, &sent_packet, sizeof(sent_packet));
-
 		}
 
 		if (superBET[1].revents & POLLIN) {

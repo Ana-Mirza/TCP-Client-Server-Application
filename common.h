@@ -17,6 +17,12 @@ struct chat_packet {
   char message[MSG_MAXSIZE + 1];
 };
 
+struct msg_packet {
+  uint16_t duplicates;
+  uint16_t len;
+  char message[MSG_MAXSIZE + 1];
+};
+
 /* structure of a topic */
 struct topic {
   char name[MAX_NAME];
@@ -29,7 +35,7 @@ struct client {
   char id[MAX_NAME];
   int is_connected;
   struct topic *topics_subscribed;
-  struct chat_packet *messages_received;
+  struct msg_packet *messages_received;
   int topics_size;
   int topics_len;
   int msg_recv_size;

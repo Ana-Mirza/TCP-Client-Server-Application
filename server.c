@@ -81,7 +81,7 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 		memcpy(clients[clients_len].id, client_id, ID_SIZE);
 		clients[clients_len].is_connected = 1;
 		clients[clients_len].topics_subscribed = malloc(INITIAL_SIZE * sizeof(struct topic));
-		clients[clients_len].messages_received = malloc(INITIAL_SIZE * sizeof(struct chat_packet));
+		clients[clients_len].messages_received = malloc(INITIAL_SIZE * sizeof(struct msg_packet));
 		clients[clients_len].topics_size = INITIAL_SIZE;
 		clients[clients_len].topics_len = 0;
 		clients[clients_len].msg_recv_size = INITIAL_SIZE;
@@ -209,7 +209,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 									sizeof(received_packet));
 					DIE(rc < 0, "recv");
 
-					/* treat topic messages */
+					/* send message to all clients that are subscribed to topic */
 				} else {
 					/* -------------------- received data from tcp client -------------------- */
 					int rc = recv_all(poll_fds[i].fd, &received_packet,
