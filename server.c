@@ -38,6 +38,14 @@ void free_clients() {
 	free(clients);
 }
 
+int get_clientfd_index(int fd) {
+	for (int i = 0; i < clients_len; i++) {
+		if (clients[i].fd == fd)
+			return i;
+	}
+	return -1;
+}
+
 /* return index of client */
 int get_client_index(char client_id[ID_SIZE]) {
 	for (int i = 0; i < clients_len; i++) {
@@ -81,10 +89,10 @@ void update_clients(int clientfd, char client_id[ID_SIZE]) {
 	clients[client_index].is_connected = 1;
 }
 
-void run_chat_multi_server(int listenfd) {
+void run_chat_multi_server(int listenfd, int udpfd) {
 
 	struct pollfd poll_fds[MAX_CONNECTIONS];
-	int num_clients = 2;
+	int num_clients = 3;
 	int rc;
 
 	struct chat_packet received_packet;
@@ -98,6 +106,8 @@ void run_chat_multi_server(int listenfd) {
 	poll_fds[0].events = POLLIN;
 	poll_fds[1].fd = STDIN_FILENO;
 	poll_fds[1].events = POLLIN;
+	poll_fds[2].fd = udpfd;
+	poll_fds[2].events = POLLIN;
 
 	/* wait for messages from clients or stdin */
 	while (1) {
@@ -127,7 +137,7 @@ void run_chat_multi_server(int listenfd) {
 					poll_fds[num_clients].events = POLLIN;
 					num_clients++;
 
-					printf("New client <ID_CLIENT> connected from %d:%d.\n", 
+					printf("New client <ID_CLIENT> connected from %s:%d.\n", 
 					inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 					/* TEMPORARY */
 					printf("Socket fd client %d\n", newsockfd);
@@ -168,6 +178,12 @@ void run_chat_multi_server(int listenfd) {
 					if (rc == 0) {
 						/* ----------- tcp conection closed ----------- */
 						printf("Socket-ul client %d a inchis conexiunea\n", i);
+
+						/* update client status */
+						int index = get_clientfd_index(poll_fds[i].fd);
+						DIE(index < 0, "wrong index");
+
+						clients[index].is_connected = 0;
 						close(poll_fds[i].fd);
 
 						/* remove client fd from poll */
@@ -176,7 +192,6 @@ void run_chat_multi_server(int listenfd) {
 						}
 
 						num_clients--;
-
 					} else {
 						/* ----------- received tcp message ----------- */
 						printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
@@ -215,7 +230,7 @@ int main(int argc, char *argv[]) {
 	int listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	DIE(listenfd < 0, "socket");
 
-	/* Coplete serv_addr, address family and port for server connection */
+	/* Complete serv_addr, address family and port for server connection */
 	struct sockaddr_in serv_addr;
 	socklen_t socket_len = sizeof(struct sockaddr_in);
 
@@ -233,16 +248,23 @@ int main(int argc, char *argv[]) {
 
 	/* Associate server address with creted socket using bind */
 	rc = bind(listenfd, (const struct sockaddr *)&serv_addr, sizeof(serv_addr));
-	DIE(rc < 0, "bind");
+	DIE(rc < 0, "bind listenfd");
 
-	run_chat_multi_server(listenfd);
+	/* create udp socket */
+	int udpfd = socket(AF_INET, SOCK_DGRAM, 0);
+	rc = bind(udpfd, (const struct sockaddr *)&serv_addr, sizeof(serv_addr));
+	DIE(rc < 0, "bind udpfd");
+
+	/* run server */
+	run_chat_multi_server(listenfd, udpfd);
 
 	/* free array of clients */
 	if (clients)
 		free_clients();
 
-	/* close listen socket */
+	/* close listen and udp sockets */
 	close(listenfd);
+	close(udpfd);
 
 	return 0;
 }
