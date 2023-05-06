@@ -108,6 +108,26 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 	return 0;
 }
 
+/* return index of topic in list of topics */
+int get_topic_index(char topic[MAX_NAME], int index) {
+	for (int i = 0; i < clients[index].topics_len; i++) {
+		if (strcmp((clients[index].topics_subscribed)[i].name, topic) == 0) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+void print_topics(int index) {
+	printf("topics for client %s\n", clients[index].id);
+	for (int i = 0; i < clients[index].topics_len; i++) {
+		printf("%d. topic name: %s sf: %d\n", i,
+				clients[index].topics_subscribed[i].name, clients[index].topics_subscribed[i].sf);
+	}
+	printf("\n");
+}
+
 void run_chat_multi_server(int listenfd, int udpfd) {
 
 	struct pollfd poll_fds[MAX_CONNECTIONS];
@@ -159,7 +179,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 					printf("New client %s connected from %s:%d.\n", received_packet.message,
 					inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 					/* TEMPORARY */
-					printf("Socket fd client %d: %d\n", num_clients, newsockfd);
+					// printf("Socket fd client %d: %d\n", num_clients, newsockfd);
 
 					/* update client status */
 					rc = update_clients(newsockfd, received_packet.message);
@@ -238,15 +258,80 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						/* ----------- received tcp message ----------- */
 						printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
 								poll_fds[i].fd, received_packet.message);
-						/* send message to all other clients */
-						for (int j = 0; j < num_clients; j++) {
-							if (poll_fds[j].fd == listenfd || poll_fds[i].fd == poll_fds[j].fd
-								|| poll_fds[j].fd == STDIN_FILENO || poll_fds[j].fd == udpfd)
-								continue;
 
-							int rc = send_all(poll_fds[j].fd, &received_packet, sizeof(received_packet));
-							DIE(rc < 0, "recv");
+						/* parse message */
+						int nr = 0, sf = 3;
+						char command[20];
+						char topic[100];
+						char *token = strtok(received_packet.message, " ");
+						while (token != NULL) {
+							nr++;
+
+							/* save command */
+							if (nr == 1)
+								strcpy(command, token);
+
+							/* save topic */
+							if (nr == 2)
+								strcpy(topic, token);
+							
+							/* save sf */
+							if (nr == 3)
+								sf = atoi(token);
+
+							token = strtok(NULL, " \n");
 						}
+
+						/* get client index */
+						int index = get_clientfd_index(poll_fds[i].fd);
+						DIE(index < 0, "wrong index");
+
+						/* subscribe command received */
+						if (strcmp(command, "subscribe") == 0) {
+							/* check if topic is already subscribed to */
+							int topic_index = get_topic_index(topic, index);
+							
+							/* subscribe user to new topic */
+							if (topic_index == -1) {
+								/* check if list of topics needs resize */
+								if (clients[index].topics_len == clients[index].topics_size) {
+									void *tmp = realloc(clients[index].topics_subscribed,
+														clients[index].topics_size * 2);
+									DIE(tmp == NULL, "realloc failed");
+									clients[index].topics_subscribed = (struct topic*)tmp;
+									clients[index].topics_size *= 2;
+								}
+
+								/* add topic in list of topics */
+								int idx = clients[index].topics_len++;
+								memcpy(clients[index].topics_subscribed[idx].name, topic, MAX_NAME);
+								clients[index].topics_subscribed[idx].sf = sf;
+							} else {
+								/* udpate sf with latest choice */
+								(clients[index].topics_subscribed)[topic_index].sf = sf;
+							}
+							print_topics(index);
+							continue;
+						}
+
+						/* unsubscribe command received */
+						if (strcmp(command, "unsubscribe") == 0) {
+							int topic_index = get_topic_index(topic, index);
+							
+							/* remove topic from list of topics */
+							if (topic_index != -1) {
+								for (int j = topic_index; j < clients[index].topics_len - 1; j++) {
+									memcpy(clients[index].topics_subscribed[j].name,
+										   clients[index].topics_subscribed[j + 1].name,
+										   MAX_NAME);
+									clients[index].topics_subscribed[j].sf = clients[index].topics_subscribed[j + 1].sf;
+								}
+
+								clients[index].topics_len--;
+							}
+						}
+						
+						print_topics(index);
 						continue;
 					}
 				}
