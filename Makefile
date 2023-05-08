@@ -22,7 +22,7 @@ common.o: common.c
 server: server.c common.o
 
 # Compile subscriber.c
-subscriber: subscriber.c common.o
+subscriber: subscriber.c common.o -lm
 
 .PHONY: clean run_server run_subscriber
 

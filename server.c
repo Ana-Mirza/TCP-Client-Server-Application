@@ -15,11 +15,13 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <netinet/tcp.h>
+#include <limits.h>
 
 #include "common.h"
 #include "helpers.h"
 
-#define MAX_CONNECTIONS 32
+#define MAX_CONNECTIONS 100
 #define INITIAL_SIZE 5
 #define ID_SIZE 20
 
@@ -38,6 +40,11 @@ void free_clients() {
 	/* free structures for each client */
 	for (int i = 0; i < clients_len; i++) {
 		free(clients[i].topics_subscribed);
+		
+		/* free messages waiting */
+		for (int j = 0; j < clients[i].msg_recv_len; j++) {
+			free(clients[i].messages_received[j]);
+		}
 		free(clients[i].messages_received);
 	}
 	free(clients);
@@ -62,6 +69,18 @@ int get_client_index(char client_id[ID_SIZE]) {
 	return -1;
 }
 
+void send_message(int fd, struct msg_packet *msg) {
+	/* make packet */
+	memset(&sent_packet, 0, sizeof(struct chat_packet));
+	sent_packet.len = sizeof(struct sockaddr_in) + strlen(msg->message + 51) + 1 + 51;
+	memcpy(sent_packet.message, &(msg->addr), sizeof(struct sockaddr_in));
+	memcpy((sent_packet.message + sizeof(struct sockaddr_in)), msg->message, sizeof(msg->message));
+
+	/* send message */
+	int rc = send_all(fd, &sent_packet, sizeof(sent_packet));
+	DIE(rc < 0, "send");
+}
+
 int update_clients(int clientfd, char client_id[ID_SIZE]) {
 	/* get position of client in array */
 	int client_index = get_client_index(client_id);
@@ -70,7 +89,7 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 	if (client_index == -1) {
 		/* check if clients array is full and resize */
 		if (clients_len == clients_size) {
-			void *tmp = realloc(clients, clients_size * 2);
+			void *tmp = realloc(clients, clients_size * 2 * sizeof(struct client));
 			DIE(tmp == NULL, "memory reallocation");
 			clients = (struct client*)tmp;
 			clients_size *= 2;
@@ -81,7 +100,9 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 		memcpy(clients[clients_len].id, client_id, ID_SIZE);
 		clients[clients_len].is_connected = 1;
 		clients[clients_len].topics_subscribed = malloc(INITIAL_SIZE * sizeof(struct topic));
-		clients[clients_len].messages_received = malloc(INITIAL_SIZE * sizeof(struct msg_packet));
+		DIE(clients[clients_len].topics_subscribed == NULL, "malloc failed");
+		clients[clients_len].messages_received = malloc(INITIAL_SIZE * sizeof(struct msg_packet*));
+		DIE(clients[clients_len].messages_received == NULL, "malloc failed");
 		clients[clients_len].topics_size = INITIAL_SIZE;
 		clients[clients_len].topics_len = 0;
 		clients[clients_len].msg_recv_size = INITIAL_SIZE;
@@ -108,7 +129,19 @@ int update_clients(int clientfd, char client_id[ID_SIZE]) {
 	clients[client_index].fd = clientfd;
 
 	/* send waiting messages */
-	/* TO DO */
+	for (int i = 0; i < clients[client_index].msg_recv_len; i++) {
+		struct msg_packet *msg = clients[client_index].messages_received[i];
+		send_message(clients[client_index].fd, msg);
+
+		/* remove message and free if not used anymore */
+		msg->duplicates -= 1;
+
+		if (msg->duplicates == 0)
+			free(msg);
+	}
+
+	/* update messages length */
+	clients[client_index].msg_recv_len = 0;
 
 	return 0;
 }
@@ -124,15 +157,6 @@ int get_topic_index(char topic[MAX_NAME], int index) {
 	return -1;
 }
 
-void print_topics(int index) {
-	printf("topics for client %s\n", clients[index].id);
-	for (int i = 0; i < clients[index].topics_len; i++) {
-		printf("%d. topic name: %s sf: %d\n", i,
-				clients[index].topics_subscribed[i].name, clients[index].topics_subscribed[i].sf);
-	}
-	printf("\n");
-}
-
 void run_chat_multi_server(int listenfd, int udpfd) {
 
 	struct pollfd poll_fds[MAX_CONNECTIONS];
@@ -140,10 +164,10 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 	int rc;
 
 	/* Set socket listefd for listening */
-	rc = listen(listenfd, MAX_CONNECTIONS);
+	rc = listen(listenfd, INT_MAX);
 	DIE(rc < 0, "listen");
 
-	/* Add listenfd and stdin in read_fds */
+	/* Add listenfd, stdin, and udp clients in poll */
 	poll_fds[0].fd = listenfd;
 	poll_fds[0].events = POLLIN;
 	poll_fds[1].fd = STDIN_FILENO;
@@ -153,16 +177,12 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 	/* wait for messages from clients or stdin */
 	while (1) {
-		/* TEMPORARY */
-		printf("NEW ROUND OF WHILE\n");
-
 		rc = poll(poll_fds, num_clients, -1);
 		DIE(rc < 0, "poll");
 
 		for (int i = 0; i < num_clients; i++) {
 			if (poll_fds[i].revents & POLLIN) {
 				if (poll_fds[i].fd == listenfd) {
-					// printf("NEW CONNECTION\n");
 					/* -------------------- new conection request -------------------- */
 					struct sockaddr_in cli_addr;
 					socklen_t cli_len = sizeof(cli_addr);
@@ -182,16 +202,13 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						continue;
 					}
 
-					printf("New client %s connected from %s:%d.\n", received_packet.message,
-					inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
-					/* TEMPORARY */
-					// printf("Socket fd client %d: %d\n", num_clients, newsockfd);
-
 					/* update client status */
 					rc = update_clients(newsockfd, received_packet.message);
 
 					/* add new socket to file descriptors if client is valid */
 					if (rc != -1) {
+						printf("New client %s connected from %s:%d.\n", received_packet.message,
+								inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 						poll_fds[num_clients].fd = newsockfd;
 						poll_fds[num_clients].events = POLLIN;
 						poll_fds[num_clients].revents = 0;
@@ -205,7 +222,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 					/* check input message */
 					if (strncmp(buf, "exit\n", strlen(buf)) == 0) {
-						printf("received EXIT command\n");
 						/* close all conections and exit */
 						for (int j = 0; j < num_clients; j++) {
 							if (poll_fds[j].fd != listenfd && poll_fds[j].fd != STDIN_FILENO
@@ -219,8 +235,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 								close(poll_fds[j].fd);
 							}
 						}
-
-						printf("ended\n");
 						return;
 					} else {
 						/* invalid command */
@@ -231,42 +245,70 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 				} else if (poll_fds[i].fd == udpfd) {
 					/* -------------------- received data from udp client -------------------- */
 					struct msg_packet *msg = malloc(sizeof(struct msg_packet));
-					struct sockaddr_in cli_addr;
-					int rc = recvfrom(poll_fds[i].fd, msg->message, sizeof(msg->message), 0,
-										(struct sockaddr *)(&msg->addr), &cli_addr);
-					DIE(rc < 0, "recvfrom");
+					DIE(msg == NULL, "malloc failed");
+					memset(msg, 0, sizeof(struct msg_packet));
+					msg->duplicates = 0;
 
-					printf("received data from udp: %s\n", msg->message);
+					/* receive data */
+					socklen_t cli_len = sizeof(msg->addr);
+					memset(msg->message, 0, 1551);
+					int rc = recvfrom(poll_fds[i].fd, msg->message, sizeof(msg->message), 0,
+										(struct sockaddr*)&msg->addr, &cli_len);
+					DIE(rc < 0, "recvfrom");
 
 					/* get topic */
 					char topic[MAX_NAME];
-					memcpy(topic, received_packet.message, 50);
+					memset(topic, 0, MAX_NAME);
+					memcpy(topic, msg->message, 50);
+
+					/* make packet */
+					memset(&sent_packet, 0, sizeof(struct chat_packet));
+					sent_packet.len = sizeof(struct sockaddr_in) + strlen(msg->message + 51) + 1 + 51;
+					memcpy(sent_packet.message, &(msg->addr), sizeof(struct sockaddr_in));
+					memcpy((sent_packet.message + sizeof(struct sockaddr_in)), msg->message, sizeof(msg->message));
 
 					/* send message to all clients that are subscribed to topic */
-					for (int j = 0; j < num_clients; j++) {
-						if (poll_fds[j].fd != STDIN_FILENO && poll_fds[j].fd != udpfd
-							&& poll_fds[j].fd != listenfd) {
+					for (int j = 0; j < clients_len; j++) {
+						if (clients[j].fd != STDIN_FILENO && clients[j].fd != udpfd
+							&& clients[j].fd != listenfd) {
 
 							/* check if client is subscribed to topic */
-							int index = get_clientfd_index(poll_fds[j].fd);
+							int index = j;
 							int topic_index = get_topic_index(topic, index);
 							if (topic_index == -1)
 								continue;
 							
 							/* sent to online client */
 							if (clients[index].is_connected) {
-								int rc = send_all(poll_fds[j].fd, &received_packet,
-													sizeof(received_packet));
+								int rc = send_all(clients[index].fd, &sent_packet, sizeof(sent_packet));
 								DIE(rc < 0, "send");
 							} else {
-								/* put in queue of client */
+								/* put in queue of client if store-and-forward is set */
 								if (clients[index].topics_subscribed[topic_index].sf == 0)
 									continue;
+								
+								/* check for resize */
+								if (clients[index].msg_recv_len == clients[index].msg_recv_size) {
+									void **tmp = realloc(clients[index].messages_received,
+														clients[index].msg_recv_size * 2 * sizeof(struct msg_packet*));
+									DIE(tmp == NULL, "realloc message queue");
+									clients[index].messages_received = (struct msg_packet**)tmp;
+									clients[index].msg_recv_size *= 2;
+								}
 
-								/* TO DO */
+								/* add in list of messages */
+								int msg_index = clients[index].msg_recv_len++;
+								clients[index].messages_received[msg_index] = msg;
+
+								/* count number of duplicates */
+								msg->duplicates++;
 							}
 						}
 					}
+
+					/* delete packet if not used anymore */
+					if (msg->duplicates == 0)
+						free(msg);
 
 				} else {
 					/* -------------------- received data from tcp client -------------------- */
@@ -281,9 +323,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						int index = get_clientfd_index(poll_fds[i].fd);
 						DIE(index < 0, "wrong index");
 
-						printf("print in rc == 0\n");
-						print_topics(index);
-
 						clients[index].is_connected = 0;
 						close(poll_fds[i].fd);
 
@@ -297,14 +336,12 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 						continue;
 					} else {
 						/* ----------- received tcp message ----------- */
-						/* TEMPORARY*/
-						// printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
-						// 		poll_fds[i].fd, received_packet.message);
 
 						/* parse message */
 						int nr = 0, sf = 3;
 						char command[20];
-						char topic[100];
+						char topic[MAX_NAME];
+						memset(topic, 0, MAX_NAME);
 						char *token = strtok(received_packet.message, " ");
 						while (token != NULL) {
 							nr++;
@@ -315,7 +352,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 
 							/* save topic */
 							if (nr == 2)
-								strcpy(topic, token);
+								memcpy(topic, token, MAX_NAME);
 							
 							/* save sf */
 							if (nr == 3)
@@ -338,7 +375,7 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 								/* check if list of topics needs resize */
 								if (clients[index].topics_len == clients[index].topics_size) {
 									void *tmp = realloc(clients[index].topics_subscribed,
-														clients[index].topics_size * 2);
+														clients[index].topics_size * 2 * sizeof(struct topic));
 									DIE(tmp == NULL, "realloc failed");
 									clients[index].topics_subscribed = (struct topic*)tmp;
 									clients[index].topics_size *= 2;
@@ -352,7 +389,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 								/* udpate sf with latest choice */
 								(clients[index].topics_subscribed)[topic_index].sf = sf;
 							}
-							print_topics(index);
 							continue;
 						}
 
@@ -372,8 +408,6 @@ void run_chat_multi_server(int listenfd, int udpfd) {
 								clients[index].topics_len--;
 							}
 						}
-						
-						print_topics(index);
 						continue;
 					}
 				}
@@ -412,13 +446,17 @@ int main(int argc, char *argv[]) {
 	memset(&serv_addr, 0, socket_len);
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_port = htons(port);
-	char addr[20] = "127.0.0.1";
-	rc = inet_pton(AF_INET, addr, &serv_addr.sin_addr.s_addr);
-	DIE(rc <= 0, "inet_pton");
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
 
 	/* Associate server address with creted socket using bind */
 	rc = bind(listenfd, (const struct sockaddr *)&serv_addr, sizeof(serv_addr));
 	DIE(rc < 0, "bind listenfd");
+
+	/* set off nagle */
+	int flag = 1;
+	rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+	DIE(rc < 0, "nagle");
+
 
 	/* create udp socket */
 	int udpfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -427,6 +465,7 @@ int main(int argc, char *argv[]) {
 
 	/* initialize clients array */
 	clients = malloc(INITIAL_SIZE * sizeof(struct client));
+	DIE(clients == NULL, "malloc failed");
 	clients_size = INITIAL_SIZE;
 	clients_len = 0;
 
@@ -434,8 +473,7 @@ int main(int argc, char *argv[]) {
 	run_chat_multi_server(listenfd, udpfd);
 
 	/* free array of clients */
-	if (clients)
-		free_clients();
+	free_clients();
 
 	/* close listen and udp sockets */
 	close(listenfd);
