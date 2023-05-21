@@ -117,5 +117,5 @@ The client prints messages received from the server in the following format:
 
 For subscribe and unsubscribed commands, the client sends the message to the 
 server to save it internally, then prints a message. For the exit command, the 
-clinet simply exits.
+client simply exits.
 
