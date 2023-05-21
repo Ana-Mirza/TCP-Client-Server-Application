@@ -96,7 +96,7 @@ If the input does not match any of those commands with permitted parameters,
 a specific error message will appear, allowing for another command to be
 introduced. Also, the values accepted for the sf are only 1 and 0. 
 
-The client also prints messages received from the server, in the following format:
+The client prints messages received from the server, in the following format:
 
     <IP_CLIENT_UDP>:<PORT_CLIENT_UDP> - <TOPIC> - <DATA_TYPE> - <MESSAGE>
 
@@ -115,7 +115,7 @@ The client also prints messages received from the server, in the following forma
            stored in memory at a time and when the last client received the
            message, the memory for the structure is freed
 
-For subscribe and unsubscribed commands, the clinet sends the message to the 
+For subscribe and unsubscribed commands, the client sends the message to the 
 server to save it internally, then prints a message. For the exit command, the 
 clinet simply exits.
 
