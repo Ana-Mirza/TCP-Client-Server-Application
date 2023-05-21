@@ -96,7 +96,7 @@ If the input does not match any of those commands with permitted parameters,
 a specific error message will appear, allowing for another command to be
 introduced. Also, the values accepted for the sf are only 1 and 0. 
 
-The client prints messages received from the server, in the following format:
+The client prints messages received from the server in the following format:
 
     <IP_CLIENT_UDP>:<PORT_CLIENT_UDP> - <TOPIC> - <DATA_TYPE> - <MESSAGE>
 
